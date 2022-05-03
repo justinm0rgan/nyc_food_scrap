@@ -1,0 +1,393 @@
+---
+title: "DATA 606 Data Project Import and Clean Data"
+author: "Justin WIlliams"
+output: pdf_document
+always_allow_html: yes
+---
+
+```{r load-packages, message=FALSE, warning=FALSE}
+library(tidycensus)
+library(tidyverse)
+library(tigris)
+options(tigris_use_cache = TRUE)
+library(RSocrata)
+library(dotenv)
+library(sf)
+```
+
+### Data Preparation
+
+View different variables to choose from in latest available Census.
+
+```{r view-census-variables}
+# variables available from 2020 decennial
+(decennial_2020 <- load_variables(2020, "pl", cache = T))
+
+# 2020 decennial didn't have income data, will have to use acs
+(acs_5_2020 <- load_variables(2020, "acs5", cache = T))
+
+# preview and search for term
+view(acs_5_2020)
+```
+
+We will be using the following from the from the ACS 5-year 2016-2020 estimate:
+
+  - Median Household Income `B19013_001` 
+  - Median Household Age`B01002_001` 
+  - Bachelor's Degree `B29002_007`
+  - Poverty Status `B17020_002`
+  - Public Transit `B08301_010`
+  - Total Population `B01001_001`
+  
+We will create a second call for race, and can join this with the main dataframe at a later date.
+  
+```{r setup, echo=TRUE, results='hide', warning=FALSE, message=FALSE}
+# pull in census data from acs 2016 - 2020
+nyc_census_data <- get_acs(geography = "tract",
+        state = "New York",
+        county = c("Bronx",
+                   "Kings",
+                   "New York",
+                   "Queens",
+                   "Richmond"),
+        year = 2020,
+        variables = c(median_income = "B19013_001",
+                      median_age = "B01002_001",
+                      bachelors_degree = "B29002_007",
+                      poverty = "B17020_002",
+                      public_transit = "B08301_010",
+                      total_pop = "B01001_001"),
+        output = "wide",
+        key = Sys.getenv("CENSUS_API"),
+        geometry = T,
+        cb = F) %>% # use TIGER/Line shapefiles
+  st_transform(crs = 2263) %>% # transform crs to best for NYC
+  erase_water(area_threshold = 0.75) #erase water from boundaries
+
+view(nyc_census_data)
+```
+
+Create a separate race only data frame which includes summary variable from census.
+
+```{r race_df}
+nyc_census_data_race <- get_acs(geography = "tract",
+        state = "New York",
+        county = c("Bronx",
+                   "Kings",
+                   "New York",
+                   "Queens",
+                   "Richmond"),
+        year = 2020,
+        variables = c(white = "B03002_003",
+                      black = "B03002_004",
+                      native = "B03002_005",
+                      asian = "B03002_006",
+                      pacific_islander = "B03002_007",
+                      other = "B03002_008",
+                      two_more = "B03002_009",
+                      hispanic_latino = "B03002_012"),
+        summary_var = "B03002_001",
+        output = "wide",
+        key = Sys.getenv("CENSUS_API"),
+        geometry = T,
+        cb = F) %>% # use TIGER/Line shapefiles
+  st_transform(crs = 2263) %>% # transform crs to best for NYC
+  erase_water(area_threshold = 0.75) #erase water from boundaries
+
+view(nyc_census_data_race)
+```
+
+Combine all Census data into one df.
+
+```{r race-and-general-census-data}
+nyc_census_data_comp <- get_acs(geography = "tract",
+        state = "New York",
+        county = c("Bronx",
+                   "Kings",
+                   "New York",
+                   "Queens",
+                   "Richmond"),
+        year = 2020,
+        variables = c(median_income = "B19013_001",
+                      median_age = "B01002_001",
+                      bachelors_degree = "B29002_007",
+                      poverty = "B17020_002",
+                      public_transit = "B08301_010",
+                      total_pop = "B01001_001",
+                      white = "B03002_003",
+                      black = "B03002_004",
+                      asian = "B03002_006",
+                      hispanic_latino = "B03002_012",
+                      native = "B03002_005",
+                      pacific_islander = "B03002_007",
+                      other = "B03002_008",
+                      two_more = "B03002_009"),
+        summary_var = "B03002_001",
+        output = "wide",
+        key = Sys.getenv("CENSUS_API"),
+        geometry = T,
+        cb = F) %>% # use TIGER/Line shapefiles
+  st_transform(crs = 2263) %>% # transform crs to best for NYC
+  erase_water(area_threshold = 0.75) #erase water from boundaries
+```
+
+### Census data cleaning
+
+#### General census data
+
+Create a percent total's for the following columns:
+-   `public_transit`
+-   `bachelors_25_over`
+-   `poverty`
+
+By dividing each variable by `total_pop`.
+
+```{r precent-public-transit}
+nyc_census_data <- nyc_census_data %>% 
+  mutate(percent_public_transit = public_transitE / total_popE,
+         percent_bachelors = bachelors_degreeE / total_popE,
+         percent_poverty = povertyE / total_popE)
+```
+
+Split Name column into:
+  - `tract`
+  - `county`
+  - `state`
+  
+```{r split-name-tract-county-state}
+nyc_census_data <- nyc_census_data %>% 
+  separate(col = NAME,
+           into = c("tract", "county", "state"),
+           sep = ","
+           )
+```
+
+
+#### Race data
+
+Combine the following race columns into `other`:
+  - `native`
+  - `pacific_islander`
+  - `other`
+  - `two`
+
+```{r create-other-race-sum-small}
+nyc_census_data_comp <- nyc_census_data_comp %>%
+  rowwise(GEOID) %>% 
+  mutate(other_raceE = sum(c_across(nativeE:two_moreE)),
+         other_raceM = sum(c_across(nativeM:two_moreM))) %>% 
+  select(c("GEOID", "NAME", "median_incomeE", "median_incomeM","median_ageE",
+           "median_ageM", "bachelors_degreeE", "bachelors_degreeM","povertyE", 
+           "povertyM", "public_transitE", "public_transitM", "total_popE", 
+           "total_popM", "whiteE", "whiteM", "blackE", "blackM", "asianE", 
+           "asianM", "hispanic_latinoE", "hispanic_latinoM", "other_raceE",
+           "other_raceM","geometry"),-c("nativeE", "nativeM","pacific_islanderE",
+           "pacific_islanderM","otherE", "otherM", "two_moreE", "two_moreM"))
+  
+```
+
+  Need to create proportion column for race. For Minority, within B03002 there is the section HISPANIC OR LATINO ORIGIN BY RACE; within this section is white alone under the 'Not Hispanic or Latino' subsection.  This is the total count for Non-Hispanic whites which is considered to be 'majority', and the reverse of this count total is then deemed 'minority'.  So the calculation can be to first divide the white alone column under HISPANIC OR LATINO ORIGIN BY RACE, subsection 'Not Hispanic or Latino' by the total population column within that theme.  That gives you the % majority.  Then you can subtract the 'Not Hispanic or Latino - White alone total that you used to get % majority to determine the absolute count for all minorities regardless of categories.  This can then be divided by the total population column within the theme to get % minority.
+
+```{r race-proportions}
+nyc_census_data_race <- nyc_census_data_race %>% 
+    mutate(percent_majority = whiteE / summary_est,
+         minority_count = summary_est - whiteE,
+         percent_white = whiteE / summary_est,
+         percent_minority = minority_count / summary_est,
+         percent_black = blackE / summary_est,
+         percent_hispanic = hispanic_latinoE / summary_est,
+         percent_asian = asianE / summary_est,
+         percent_native = nativeE / summary_est,
+         percent_pac_isl = pacific_islanderE / summary_est,
+         percent_other = otherE / summary_est,
+         percent_two = two_moreE / summary_est) 
+```
+
+Ratio calculations for all variables.
+
+```{r create-ratio-col}
+nyc_census_data_comp <- nyc_census_data_comp %>% 
+  mutate(percent_public_transit = public_transitE / total_popE,
+         percent_bachelors = bachelors_degreeE / total_popE,
+         percent_poverty = povertyE / total_popE,
+         percent_majority = whiteE / total_popE,
+         minority_count = total_popE - whiteE,
+         percent_white = whiteE / total_popE,
+         percent_minority = minority_count / total_popE,
+         percent_black = blackE / total_popE,
+         percent_hispanic = hispanic_latinoE / total_popE,
+         percent_asian = asianE / total_popE,
+         percent_other = other_raceE / total_popE)
+
+glimpse(nyc_census_data_comp)
+```
+
+Split Name column into:
+  - `tract`
+  - `county`
+  - `state`
+  
+```{r split-name-tract-county-state}
+nyc_census_data_comp <-  nyc_census_data_comp %>% 
+  separate(col = NAME,
+           into = c("tract", "county", "state"),
+           sep = ","
+           )
+```
+
+
+```{r split-race-name-tract-county-state}
+nyc_census_data_race <-  nyc_census_data_race %>% 
+  separate(col = NAME,
+           into = c("tract", "county", "state"),
+           sep = ","
+           )
+```
+
+## Food Scrap Data
+
+Pull in food scrap site data using Socrata API.
+
+```{r load-food-scrap-data}
+# load food scrap data
+food_scrap <- 
+  read.socrata(
+    "https://data.cityofnewyork.us/resource/if26-z6xq.json", 
+    app_token = Sys.getenv("SOCRATA_API"))
+
+#preview data
+view(food_scrap)
+
+# look at census tract columns
+food_scrap %>% 
+  group_by(borough, ct2010) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+
+# sum missing values
+sum(is.na(food_scrap$ct2010))
+```
+
+### Impute missing values
+
+157 missing values in `ct2010` Census Tract, will need to get these values in order to eventually join with Median Income data. We can use the `call_geolocator_latlon()` function from the **tigris** package to get Census Codes from point locations. It's a 15 digit number where the first 2-digit code are state, second 3-digit code state, the next 6-digit code for Census Tract. Therefore we can get a sub-string that equates to census tracts and fill in this missing data.
+
+```{r get-census-code}
+# many na in census tract, get census code through geolocator
+food_scrap$census_code <- 
+  apply(food_scrap, 1, function(row) call_geolocator_latlon(
+  row['latitude'], row['longitude']
+))
+
+# get census tracts from census code
+food_scrap <- food_scrap %>% 
+  mutate(ct2010_2 = as.numeric(substr(census_code, 6, 11)))
+
+# convert to simple features object to utilize geometry features
+food_scrap_sf <- food_scrap %>% 
+  st_as_sf(coords = c("longitude", "latitude"),
+           crs = 4326
+  ) %>% 
+  st_transform(2263)
+
+# drop point coordinates column
+drop <- c("point.coordinates")
+food_scrap_sf <- food_scrap_sf %>% 
+  select(-drop)
+
+#preview
+view(food_scrap_sf)
+```
+
+Save and then recall so I don't have to redo geolocator function (takes time).
+
+```{r save-census-code}
+saveRDS(food_scrap_sf, file = "./data/food_scrap_sf.rds")
+food_scrap_sf <- readRDS("./data/food_scrap_sf.rds")
+```
+
+We need to aggregate by count for census tract and then join this to the median income data through Census Tracts. We will also create a boolean `food_scrap` which denotes whether a Census Tract has a food scrap composting site or not. 
+
+```{r get-census-tract-info}
+# aggreagte by borough
+(food_scrap_borough <- food_scrap_sf %>% 
+  group_by(borough) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)))
+```
+
+There are two missing values for borough, let's use the census code column imputed earlier to get the county code. Then we can fill in those missing values for county
+
+```{r county-code}
+food_scrap_sf <- food_scrap_sf %>%
+  mutate(county_code = as.numeric(substr(census_code, start = 3, stop = 5)))
+
+food_scrap_sf %>% 
+  group_by(borough, county_code) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+```
+We can see the missing county codes are 047 Kings and 061 New York. Let's fill those in.
+
+```{r impute-missing-borough}
+(food_scrap_borough <- food_scrap_sf %>% 
+  mutate(borough = ifelse(county_code == 47, "Kings",
+                          ifelse(county_code == 61, "New York", borough))
+) %>% 
+  group_by(borough) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)))
+```
+
+### Aggregate `food_scrap_df` by Geography
+
+So we can see Kings County has the most sites followed by New York and Queens. 
+Let's aggregate by borough and Census Tract.
+
+```{r borough-census-tract}
+# aggreate by borough and census tract
+(food_scrap_ct <- food_scrap_sf %>% 
+  group_by(borough, ct2010_2) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)))
+```
+
+So it looks like no census tract has more then 3 food scrap drop-off sites.
+
+## Merge
+
+```{r merge-all-datasets}
+# create ct column for joining
+nyc_census_data_comp <- nyc_census_data_comp %>% 
+  mutate(ct2010 = str_sub(string = GEOID,
+                          start = 6))
+
+# join ct and food scrap data.
+merged_df <- nyc_census_data_comp %>% 
+  st_join(food_scrap_ct)
+
+# create bool column for food scrap
+merged_df <- merged_df %>% 
+  mutate(food_scrap = ifelse(count != 0, 1, 0))
+```
+
+
+## Export dataframes for EDA in following notebook
+
+```{r export-data}
+saveRDS(nyc_census_data,
+        file = "./data/nyc_census_data.rds")
+saveRDS(nyc_census_data_race,
+        file = "./data/nyc_census_data_race.rds")
+saveRDS(food_scrap_sf,
+        file = "./data/food_scrap_sf.rds")
+saveRDS(food_scrap_borough,
+        file = "./data/food_scrap_borough.rds")
+saveRDS(food_scrap_ct,
+        file = "./data/food_scrap_ct.rds")
+saveRDS(merged_df,
+        file = "./data/merged_df.rds")
+```
+
+  
+

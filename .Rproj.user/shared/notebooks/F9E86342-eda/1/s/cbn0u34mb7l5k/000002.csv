@@ -1,0 +1,9 @@
+"0","ggplot_choropleth(df = nyc_census_data,
+                  col = ""median_incomeE"",
+                  palette = ""PuBu"",
+                  legend_title = ""$ Median Income"",
+                  direction = 1,
+                  plot_title = ""Median Income, 2016-2020 ACS"")
+"
+"2","Error in (1 - h) * qs[i] : non-numeric argument to binary operator
+"

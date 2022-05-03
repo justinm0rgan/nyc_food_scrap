@@ -1,0 +1,2 @@
+"0","# variables available from 2020 decennial"
+"0","(decennial_2020 <- load_variables(2020, ""pl"", cache = T))"

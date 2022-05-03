@@ -1,0 +1,550 @@
+---
+title: "DATA 606 Data Project EDA"
+author: "Justin WIlliams"
+output: pdf_document
+always_allow_html: yes
+---
+
+```{r load-packages, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(dotenv)
+library(mapboxapi)
+library(scales)
+library(PerformanceAnalytics)
+library(sf)
+library(mapview)
+library(tmap)
+library(classInt)
+library(GGally)
+library(ggbeeswarm)
+library(ggridges)
+library(RColorBrewer)
+library(ggspatial)
+library(XploreR)
+```
+
+# Exploratory Data Analysis (EDA)
+
+This notebook will focus on exploring our data, and the different census data variables.
+
+  - visualize `median_income` with error bars per county
+  - facet_wrap() median income by county with geom_density function
+  - ggridges for overlapped density plots, maybe use this with education?
+  - use **ggbeeswarm** package to show household income by race/ehtnicity in NYC
+  reference https://walker-data.com/census-r/exploring-us-census-data-with-visualization.html
+
+## Feature engineering?
+  - maybe include some feature engineering in this notebook to help create some visualizations. 
+
+## Load cleaned data
+Let's load in data from data cleaning notebook.
+
+```{r load-cleaned data}
+food_scrap_sf <- readRDS(file = "./data/food_scrap_sf.rds")
+food_scrap_borough <- readRDS(file = "./data/food_scrap_borough.rds")
+food_scrap_ct <- readRDS(file = "./data/food_scrap_ct.rds")
+nyc_census_data <- readRDS("./data/nyc_census_data.rds")
+nyc_census_data_race <- readRDS("./data/nyc_census_data_race.rds")
+```
+
+## Relevant summary statistics 
+
+**Provide summary statistics for each the variables. Also include appropriate visualizations related to your research question (e.g. scatter plot, boxplots, etc). This step requires the use of R, hence a code chunk is provided below. Insert more code chunks as needed.**
+
+### Census Data
+
+Visualize the distribution of each and how they are correlated with a matrix
+
+```{r census-data-correlation}
+# using performance analytic package
+nyc_census_data %>%
+  select(!ends_with("M")) %>% 
+  select(!starts_with("percent")) %>%
+  select(where(is.numeric)) %>% 
+  st_drop_geometry() %>% 
+  chart.Correlation(histogram = T,
+                    pch = 20)
+
+# using ggpairs
+nyc_census_data %>%
+  select(!ends_with("M")) %>% 
+  select(!starts_with("percent")) %>%
+  select(where(is.numeric)) %>% 
+  st_drop_geometry() %>% 
+  ggpairs()
+```
+There seems to be some strong linear relationships between some of the variables. The strongest being between Public Transit and Total Population. Other significant relationships include, Poverty and Public Transit. With a bit less of a linear trend we can see Bachelor's degree correlated with Poverty, Public Transit and Total Population. 
+
+### Histograms
+
+```{r visulaize-distribution-by-county}
+nyc_census_data %>% 
+  ggplot(aes(x = median_incomeE,
+         fill = county)) +
+    geom_density(alpha= 0.3) +
+    scale_x_continuous(
+      label = scales::dollar_format(scale = .001,
+                                    prefix = "$",
+                                    suffix = "k")) +
+    theme_minimal(base_size = 14) + 
+    theme(axis.text.y = element_text(), 
+          axis.text.x = element_text(angle = 45)) +
+    labs(x = "Median Income", 
+         y = "Density", 
+         title = "Median Income by County, 2016-2020 ACS",
+         fill = "County")
+```
+
+With `facet_wrap()`
+
+```{r facet-wrap-median-income-county}
+nyc_census_data %>% 
+  ggplot(aes(x = median_incomeE)) +
+    geom_density(fill = "darkgreen", color = "darkgreen", alpha = 0.5) + 
+    facet_wrap(~county) + 
+    scale_x_continuous(labels = scales::dollar_format(scale = .001,
+                                    prefix = "$",
+                                    suffix = "k")) +
+    theme_minimal(base_size = 12) + 
+    theme(axis.text.y = element_blank(), 
+          axis.text.x = element_text(angle = 60),
+          plot.title.position = "plot",
+          plot.title = element_text(hjust = 0.5)) +
+    labs(x = "Median Income", 
+         y = "", 
+         title = "Median Income by County, 2016-2020 ACS")
+
+```
+
+
+Let's do this for each variable in the dataset that it makes sense to do it for.
+Have to select some columns, drop geometry and pivot to longer.
+
+```{r plot-all-hist-county}
+nyc_census_data %>%
+  select(!ends_with("M")) %>% 
+  select(!starts_with("percent")) %>%
+  st_drop_geometry() %>%
+  pivot_longer(median_incomeE:total_popE) %>% 
+  ggplot(aes(x = value,
+         fill = county)) +
+    geom_density(alpha= 0.3) +
+    facet_wrap(~ name, scales = "free")
+  
+```
+
+Looks like Manhattan is the least normal out of all the counties except in median age.
+
+### Box plots
+
+Let's look at box plots for the variables in `nyc_census_data` data frame.
+
+```{r box-plots}
+nyc_census_data %>%
+  select(!ends_with("M")) %>%
+  select(-c("bachelors_degreeE", "povertyE", "public_transitE")) %>% 
+  st_drop_geometry() %>%
+  pivot_longer(median_incomeE:percent_poverty) %>% 
+  ggplot(aes(x = value,
+         fill = county)) +
+    geom_boxplot(alpha= 0.3) +
+    facet_wrap(~ name, scales = "free") +
+    coord_flip()
+
+```
+
+Looks like Manhattan is the most educated, highest income, most public transit use and most populated. Looks like the Bronx has the highest poverty, least educated and lowest income, but also the youngest borough.
+
+Let's look at descriptive statistics of median income per census tract in NYC.
+
+```{r median-income-des-stats}
+nyc_median_income %>% 
+  ggplot(aes(estimate)) + 
+    geom_boxplot(fill = "lightblue",
+                 notch = T,
+                 na.rm = T) +
+    coord_flip() +
+    scale_x_continuous(labels = 
+                         scales::dollar_format(
+                           scale = .001,
+                           prefix = "$",
+                           suffix = "k")) +
+    labs(x = "Income ($USD)", title = "NYC Census Tract Median Income (ACS 2016-2020)")
+```
+
+## Scatterplots?
+
+Could do a geom_smooth plot with target variable.
+
+## Spatial visualizations of Census Data
+
+### Choropleth Maps
+
+Get static basemap for **tmap** maps.
+
+```{r static-basemap-mapbox}
+mapbox_api <- mb_access_token(Sys.getenv("MAPBOX_API"),
+                              install = T,
+                              overwrite = T)
+#set tiles
+nyc_tiles <- 
+  get_static_tiles(
+    location = nyc_census_data,
+    zoom = 10,
+    style_id = "light-v9",
+    username = "mapbox",
+    access_token = mapbox_api
+  )
+```
+
+Create choropleth tmap function for basic view distribution of variables.
+
+```{r tmap-function}
+
+tmap_choropleth <- function(tiles, 
+                            df, 
+                            col, 
+                            palette = "cividis",
+                            legend_title = "2016-2020 ACS",
+                            plot_title = paste0(col," by Census Tract"),
+                            title_size = 1) {
+  
+  tm_shape(tiles) +
+  tm_rgb() +
+  tm_shape(df) +
+    tm_polygons(col = col,
+          palette = palette,
+          title = legend_title,
+          n = 5,
+          style = "jenks",
+          border.col = "white",
+          lwd = 0) +
+    tm_layout(legend.outside = F,
+            title = plot_title,
+            title.size = title_size,
+            frame = F,
+            fontfamily = "Verdana",
+            bg.color = "transparent") +
+    tm_scale_bar(position = c(0.01,0.0000001)) +
+    tm_compass(
+      position = c("right", "top")) +
+    tm_credits("(c) Mapbox, OSM    ", 
+             bg.color = "transparent",
+             position = c("right", "bottom"))
+}
+
+
+
+tmap_median_age <- tmap_choropleth(nyc_tiles,
+                nyc_census_data,
+                col = "median_ageE",
+                palette = "Blues",
+                legend_title = "2016-2020 ACS",
+                plot_title = "Median Age by Census Tract")
+
+tmap_median_income <- tmap_choropleth(nyc_tiles,
+                nyc_census_data, 
+                col = "median_incomeE",
+                palette = "cividis",
+                legend_title = "$ 2016-2020 ACS",
+                plot_title = "Median Income by Census Tract", 
+                title_size = 1.4)
+
+tmap_percent_bachelors <- tmap_choropleth(nyc_tiles,
+                nyc_census_data,
+                palette = "BuGn",
+                col = "percent_bachelors",
+                legend_title = "% 2016-2020 ACS",
+                plot_title = "Percent Bachelor's by Census Tract")
+
+tmap_percent_poverty <-  tmap_choropleth(nyc_tiles,
+                nyc_census_data,
+                col = "percent_poverty",
+                palette = "GnBu",
+                legend_title = "% 2016-2020 ACS",
+                plot_title = "Percent Poverty by Census Tract"
+                )
+tmap_percent_public_transit <-tmap_choropleth(nyc_tiles,
+                nyc_census_data,
+                col = "percent_public_transit",
+                palette = "OrRd",
+                legend_title = "% 2016-2020 ACS",
+                plot_title = "Percent Public Transit by Census Tract")
+
+tmap_total_pop <- tmap_choropleth(nyc_tiles,
+                nyc_census_data,
+                col = "total_popE",
+                palette = "BuPu",
+                plot_title = "Total Population by Census Tract")
+
+tmap_median_age
+tmap_median_income
+tmap_percent_poverty
+tmap_percent_bachelors
+tmap_percent_public_transit
+tmap_total_pop
+```
+
+**ggplot** maps with classInterval to get better breaks.
+
+```{r classInterval}
+# set breaks
+breaks_jenks_bach <- classIntervals(
+  nyc_census_data$percent_bachelors, 
+  style = "jenks", 
+  n = 5)
+
+# plot ggplot map
+percent_bachelors_breaks <- nyc_census_data %>%
+  mutate(percent_bachelors_cat = cut(percent_bachelors, breaks_jenks_bach$brks)) %>% 
+  ggplot() +
+    geom_sf(aes(fill = percent_bachelors_cat),
+            alpha = 0.8,
+            color = "white",
+            size = 0.01) +
+    scale_fill_brewer(palette = "PuBu",
+                      name = "% Bachelor's Degree",
+                      direction = -1) +
+    theme_void() +
+    theme(plot.title.position = "plot",
+          plot.title = element_text(hjust = 0.5)) +
+    theme(panel.grid = element_line(color = "transparent")) +
+    labs(title = "NYC Percent Bachelor's degree or more, 2016-2020 ACS")
+
+percent_bachelors_breaks
+```
+
+
+## Food Scrap Visualizations
+
+Let's visualize food scrap sites
+
+```{r food-scrap-visualize}
+# preview food scrap sites
+food_scrap_sf %>% 
+  mapview(
+    col.regions = "red",
+    legend = F
+  )
+
+food_scrap_sf %>% 
+  ggplot() +
+    geom_sf()
+```
+
+Let's look at this overlayed with the median income data.
+Let's try with **tmap** choropleth function, and if that doesn't work will have to go with **ggplot**
+
+tmap test
+not clear
+
+```{r tmap-choropleth-overlay-food-scrap}
+# add food scrap column for legend in tmap
+food_scrap_sf <-  food_scrap_sf %>% 
+  mutate(food_scrap = "Food Scrap Drop-Off")
+
+tmap_med_income_food_scrap <- tmap_median_income +
+  tm_shape(food_scrap_sf) +
+  tm_dots(col = "food_scrap",
+          border.col = "white",
+          border.lwd = 3,
+          title = "",
+          showNA = F,
+          palette = brewer.pal(4, "Greens")[4],
+          alpha = 0.7)
+
+tmap_med_income_food_scrap
+  
+tmap_save(tmap_med_income_food_scrap,
+          filename = "./images/tmap_med_income_food_scrap.png")
+
+view(food_scrap_sf)
+```
+
+Custom break **ggplot** with food scraps.
+
+```{r custom-break-ggplot-food-scrap, warning=FALSE}
+nyc_census_data <- nyc_census_data %>% 
+  mutate_jenks_brks(median_ageE,n = 5) %>% 
+  mutate_jenks_brks(median_incomeE,n = 5) %>% 
+  mutate_jenks_brks(percent_poverty,n = 5) %>% 
+  mutate_jenks_brks(percent_bachelors, n =5) %>% 
+  mutate_jenks_brks(percent_public_transit, n = 5) %>% 
+  mutate_jenks_brks(total_popE, n = 5)
+```
+
+**ggplot** choropleth map function.
+
+```{r ggplot-base-plot-functiopn}
+ggplot_choropleth_jenks <- function(df1, catcol1, df2, 
+                                    plot_title, legend_title,
+                                    df1color="Greens",
+                                    dot_color_plot = "black",
+                                    dot_color_legend = "black") {
+  ggplot() +
+    geom_sf(
+      data = df1,
+      aes(fill = catcol1),
+      alpha = 0.85,
+      color = "white",
+      size = 0.01) +
+    geom_sf(
+      data = df2,
+      aes(color = "Food Scrap Drop-off"),
+      alpha = 0.7,
+      show.legend = "point",
+      pch = 21,
+      color = "white",
+      fill = dot_color_plot
+    ) +
+    scale_fill_manual(values = brewer.pal(6, df1color),
+                      guide = guide_legend(override.aes = list(
+                              linetype = "blank",
+                              shape = NA))) +
+    scale_color_manual(values = c("Food Scrap Drop-off" = dot_color_legend),
+                     guide = guide_legend(
+                      override.aes = list(
+                      pch = 21,
+                      fill = dot_color_legend,
+                      color = "white",
+                      linetype = "blank"))) +
+    theme_void() +
+    theme(plot.title.position = "plot",
+          plot.title = element_text(hjust = 0.5)) +
+    theme(panel.grid = element_line(color = "transparent")) +
+    labs(color = "",
+         title = plot_title,
+         fill = legend_title,
+         caption = "Data source: ACS 5-year 2016-2020 estimate & DOS NYC Open Data") +
+    annotation_scale(
+      location = "bl",
+      pad_x = unit(3, "cm")) +
+    annotation_north_arrow(
+      location = "br",
+      pad_x = unit(0.5, "in"),
+      style = north_arrow_fancy_orienteering)
+}
+
+
+# calls function for each variable
+ggplot_median_age_food_scrap <- ggplot_choropleth_jenks(df1 = nyc_census_data, 
+                        catcol1 = nyc_census_data$median_ageE,
+                        df2 = food_scrap_sf,
+                        df1color = "Blues",
+                        plot_title = 
+                          "Median Age by Census Tract w/ Food Scrap Drop-off sites",
+                        legend_title = "Age in Years")
+
+ggplot_median_income_food_scrap <- ggplot_choropleth_jenks(df1 = nyc_census_data, 
+                        catcol1 = nyc_census_data$median_incomeE_brks,
+                        df2 = food_scrap_sf,
+                        df1color = "YlGnBu",
+                        plot_title = 
+                          "Median Income by Census Tract w/ Food Scrap Drop-off sites",
+                        legend_title = "Income ($USD)")
+
+ggplot_per_pov_food_scrap <- ggplot_choropleth_jenks(df1 = nyc_census_data, 
+                        catcol1 = nyc_census_data$percent_pov_cat,
+                        df2 = food_scrap_sf,
+                        df1color = "BuGn",
+                        plot_title = 
+                          "Percent Poverty by Census Tract w/ Food Scrap Drop-off sites",
+                        legend_title = "% Poverty")
+
+ggplot_per_bach_food_scrap <- ggplot_choropleth_jenks(df1 = nyc_census_data, 
+                        catcol1 = nyc_census_data$percent_bach_cat,
+                        df2 = food_scrap_sf,
+                        df1color = "GnBu",
+                        plot_title = 
+      "Percent Bachelor's Degree or higher by Census Tract w/ Food Scrap Drop-off sites",
+                        legend_title = "% Bachelor's")
+
+ggplot_per_pub_food_scrap <- ggplot_choropleth_jenks(df1 = nyc_census_data, 
+                        catcol1 = nyc_census_data$percent_pub_cat,
+                        df2 = food_scrap_sf,
+                        df1color = "OrRd",
+                        plot_title = 
+      "Percent Public Transit by Census Tract w/ Food Scrap Drop-off sites",
+                        legend_title = "% Public Transit")
+
+
+ggplot_total_pop_food_scrap <- ggplot_choropleth_jenks(df1 = nyc_census_data, 
+                        catcol1 = nyc_census_data$total_pop_cat,
+                        df2 = food_scrap_sf,
+                        df1color = "BuPu",
+                        plot_title = 
+                "Total Population by Census Tract w/ Food Scrap Drop-off sites",
+                        legend_title = "")
+
+# each plot
+ggplot_median_age_food_scrap
+ggplot_median_income_food_scrap
+ggplot_per_bach_food_scrap
+ggplot_per_pov_food_scrap
+ggplot_per_pub_food_scrap
+ggplot_total_pop_food_scrap
+```
+
+Ok, well we know we have a bunch throughout each borough, we need to aggregate by count for census tract and then join this to the median income data through Census Tracts. We will also create a boolean `food_scrap` which denotes whether a Census Tract has a food scrap composting site or not. 
+
+## Food Scrap by Borough
+
+```{r food-scrap-borough}
+food_scrap_borough %>% 
+  ggplot(aes(reorder(borough, count), count, fill = count)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(x="", y = "Count", fill = "", title = "Count of Food Scrap drop-off sites by Borough")
+```
+
+So we can see Kings County has the most sites followed by New York and Queens. 
+Let's aggregate by borough and Census Tract.
+
+There were `r sum(is.na(nyc_median_income$estimate))` rows with `NA`, so those were removed. Otherwise we can see median income per NYC Census Tract is ~$70k and the Interquartile Range is between spans ~50k - ~90k. Max outliers are upwards of ~250k and Min is very low.
+
+Let's take a look at distributions of food scrap drop off sites.
+
+```{r food-scrap-drop-map}
+# create ct column for joining
+nyc_median_income <- nyc_median_income %>% 
+  mutate(ct2010 = str_sub(string = GEOID,
+                          start = 6))
+# join ct and food scrap data.
+merged_df <- nyc_median_income %>% 
+  st_join(food_scrap_ct)
+
+# create bool column for food scrap
+merged_df <- merged_df %>% 
+  mutate(food_scrap = ifelse(count != 0, 1, 0))
+
+# visualize food scrap drop off
+merged_df %>% 
+  ggplot(aes(fill = count)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "viridis") +
+  labs(title = "Food Scrap drop off by Census Tract Nov 2021",
+       caption = "Data source: NYC Department of Sanitation",
+       fill = "Drop off count") +
+  theme_void()
+```
+
+We can see that most Census Tract's DO NOT have food scrap drop offs. Additionally, only a few have multiple food scrap drop offs. 
+
+Total census tracts with food drop off sites versus those that do not.
+```{r total-yes-no}
+merged_df %>% 
+  group_by(food_scrap = as.factor(food_scrap)) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(food_scrap, count, fill = food_scrap)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(x="", y="Count", title = "Count of NYC Census Tracts with and without Food Scrap drop-off sites") +
+    scale_x_discrete(labels=c("Yes", "No")) +
+    geom_text(aes(label = count, hjust=1.2)) +
+    theme(legend.position = "none")
+```
+
+Imbalanced data set with 196 yes and 2129 no.
+
+Next step would be to look at what percentage of census tracts within each borough have food scrap drop-off sites or not. 
+

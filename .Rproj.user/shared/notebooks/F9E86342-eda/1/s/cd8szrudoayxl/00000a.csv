@@ -1,0 +1,8 @@
+"0","# using performance analytic package"
+"0","nyc_census_data %>%"
+"0","  select(!ends_with(""M"")) %>% "
+"0","  select(!starts_with(""percent"")) %>%"
+"0","  select(where(is.numeric)) %>% "
+"0","  st_drop_geometry() %>% "
+"0","  chart.Correlation(histogram = T,"
+"0","                    pch = 20)"

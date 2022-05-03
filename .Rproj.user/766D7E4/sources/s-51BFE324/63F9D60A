@@ -1,0 +1,27 @@
+{
+    "id": "63F9D60A",
+    "path": "~/projects/food_scrap/eda.Rmd",
+    "project_path": "eda.Rmd",
+    "type": "r_markdown",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1651240226893.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "507,0",
+        "scrollLine": "503",
+        "last_setup_crc32": ""
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1651548426,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1651548426524,
+    "read_only": false,
+    "read_only_alternatives": []
+}

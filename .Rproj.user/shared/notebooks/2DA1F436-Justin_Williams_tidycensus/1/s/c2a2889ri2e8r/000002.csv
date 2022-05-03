@@ -1,0 +1,39 @@
+"0","# load simple features and tigris packages to exclude water boundaries"
+"0","library(sf)"
+"0","library(tigris)"
+"0",""
+"0","# recall data"
+"0","acs_5yr_2020 <- get_acs(geography = ""tract"","
+"0","              state = ""New York"","
+"0","              county = c("
+"0","                ""Bronx"","
+"0","                ""Kings"","
+"0","                ""New York"","
+"0","                ""Queens"", "
+"0","                ""Richmond""),"
+"0","              year = 2020,"
+"0","              variables = ""B19013_001"","
+"0","              key = Sys.getenv(""CENSUS_API""),"
+"0","              geometry = TRUE,"
+"0","              cb = FALSE) %>% "
+"0","  st_transform(crs = 2263) %>% "
+"0","  erase_water(area_threshold = 0.75)"
+"2","Getting data from the 2016-2020 5-year ACS
+"
+"2","Using FIPS code '36' for state 'New York'
+"
+"2","Using FIPS code '005' for 'Bronx County'
+"
+"2","Using FIPS code '047' for 'Kings County'
+"
+"2","Using FIPS code '061' for 'New York County'
+"
+"2","Using FIPS code '081' for 'Queens County'
+"
+"2","Using FIPS code '085' for 'Richmond County'
+"
+"2","Fetching area water data for your dataset's location...
+"
+"2","Erasing water area...
+If this is slow, try a larger area threshold value.
+"

@@ -1,0 +1,5 @@
+"0","food_scrap_sf <- readRDS(file = ""./data/food_scrap_sf.rds"")"
+"0","food_scrap_borough <- readRDS(file = ""./data/food_scrap_borough.rds"")"
+"0","food_scrap_ct <- readRDS(file = ""./data/food_scrap_ct.rds"")"
+"0","nyc_census_data <- readRDS(""./data/nyc_census_data.rds"")"
+"0","nyc_census_data_race <- readRDS(""./data/nyc_census_data_race.rds"")"

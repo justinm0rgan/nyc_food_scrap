@@ -1,0 +1,20 @@
+"0","(food_scrap_borough <- food_scrap_sf %>% "
+"0","  mutate(borough = ifelse(county_code == 47, ""Kings"","
+"0","                          ifelse(county_code == 61, ""New York"", borough))"
+"0",") %>% "
+"0","  group_by(borough) %>% "
+"0","  summarise(count = n()) %>% "
+"0","  arrange(desc(count)))"
+"1","Simple feature collection with 5 features and 2 fields"
+"1","
+"
+"1","Geometry type: MULTIPOINT
+"
+"1","Dimension:     XY
+"
+"1","Bounding box:  "
+"1","xmin: 922387.6 ymin: 131898.4 xmax: 1061554 ymax: 268353.6"
+"1","
+"
+"1","Projected CRS: NAD83 / New York Long Island (ftUS)
+"

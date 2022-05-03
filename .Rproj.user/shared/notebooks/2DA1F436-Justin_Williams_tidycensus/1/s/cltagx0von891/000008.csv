@@ -1,0 +1,45 @@
+"0","# make call to api
+nyc_race_2020_dc <- get_decennial(
+  geography = ""tract"",
+  state = ""New York"",
+  county = c(
+                ""Bronx"",
+                ""Kings"",
+                ""New York"",
+                ""Queens"", 
+                ""Richmond""),
+  year = 2020,
+  variables = c(White = ""P2_005N"",
+                Black = ""P2_006N"",
+                Native = ""P2_007N"",
+                Asian = ""P2_008N"",
+                Latinx = ""P2_002N""),
+  key = Sys.getenv(""CENSUS_API""),
+  summary_var = ""P2_001N"",
+  geometry = T,
+  cb = F
+) %>% 
+  st_transform(crs = 2263) %>% 
+  erase_water(area_threshold = 0.75)
+"
+"2","Getting data from the 2020 decennial Census
+"
+"2","Using FIPS code '36' for state 'New York'
+"
+"2","Using FIPS code '005' for 'Bronx County'
+"
+"2","Using FIPS code '047' for 'Kings County'
+"
+"2","Using FIPS code '061' for 'New York County'
+"
+"2","Using FIPS code '081' for 'Queens County'
+"
+"2","Using FIPS code '085' for 'Richmond County'
+"
+"2","Using the PL 94-171 Redistricting Data summary file
+"
+"2","Fetching area water data for your dataset's location...
+"
+"2","Erasing water area...
+If this is slow, try a larger area threshold value.
+"

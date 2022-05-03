@@ -1,0 +1,6 @@
+"0","# set the search to a variable"
+"0","acs20 <- load_variables(year =2020, "
+"0","                        dataset = ""acs5"", "
+"0","                        cache = T)"
+"0","# browse census variables"
+"0","View(acs20)"

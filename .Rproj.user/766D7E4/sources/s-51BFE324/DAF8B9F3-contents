@@ -1,0 +1,20 @@
+---
+title: "DATA 606 Data Project Statisical Modeling"
+author: "Justin WIlliams"
+output: pdf_document
+always_allow_html: yes
+---
+
+```{r load-packages, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(dotenv)
+library(sf)
+library(mapview)
+library(tmap)
+library(MASS)
+```
+## Statistical Modeling
+  - Logistic regression model use https://walker-data.com/census-r/analyzing-census-microdata.html?q=logistic%20regression#data-preparation as reference but use glm
+  - could also look into spatial autocorrelation 
+  https://walker-data.com/census-r/spatial-analysis-with-us-census-data.html?q=spatial%20autoco#local-spatial-autocorrelation
+

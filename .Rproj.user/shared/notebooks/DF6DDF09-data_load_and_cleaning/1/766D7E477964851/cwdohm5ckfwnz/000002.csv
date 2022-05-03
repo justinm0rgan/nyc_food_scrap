@@ -1,0 +1,4 @@
+"0","nyc_census_data <- nyc_census_data %>% "
+"0","  mutate(percent_public_transit = public_transitE / total_popE,"
+"0","         percent_bachelors = bachelors_degreeE / total_popE,"
+"0","         percent_poverty = povertyE / total_popE)"

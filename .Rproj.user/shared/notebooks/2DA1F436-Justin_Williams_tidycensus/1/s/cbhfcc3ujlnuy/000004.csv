@@ -1,0 +1,16 @@
+"0","# preview results
+colnames(nyc_race_2020_dc)
+"
+"1","[1]"
+"1"," ""GEOID""        "
+"1"," ""NAME""         "
+"1"," ""variable""     "
+"1"," ""value""        "
+"1","
+"
+"1","[5]"
+"1"," ""summary_value"""
+"1"," ""geometry""     "
+"1"," ""percent""      "
+"1","
+"

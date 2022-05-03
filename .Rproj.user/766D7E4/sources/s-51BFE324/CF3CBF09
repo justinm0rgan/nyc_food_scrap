@@ -1,0 +1,27 @@
+{
+    "id": "CF3CBF09",
+    "path": "~/projects/food_scrap/data_load_and_cleaning.Rmd",
+    "project_path": "data_load_and_cleaning.Rmd",
+    "type": "r_markdown",
+    "hash": "1449930119",
+    "contents": "",
+    "dirty": false,
+    "created": 1651240854018.0,
+    "source_on_save": false,
+    "relative_order": 1,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "389,0",
+        "scrollLine": "361",
+        "last_setup_crc32": "51BFE324e9e159e3"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1651581930,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1651581930909,
+    "read_only": false,
+    "read_only_alternatives": []
+}

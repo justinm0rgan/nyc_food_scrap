@@ -1,0 +1,12 @@
+"0","nyc_census_data %>%"
+"0","  select(!ends_with(""M"")) %>% "
+"0","  select(!starts_with(""percent"")) %>%"
+"0","  st_drop_geometry() %>%"
+"0","  pivot_longer(median_incomeE:total_popE) %>% "
+"0","  ggplot(aes(x = value,"
+"0","         fill = county)) +"
+"0","    geom_density(alpha= 0.3) +"
+"0","    facet_wrap(~ name, scales = ""free"")"
+"2","Warning:"
+"2"," Removed 207 rows containing non-finite values (stat_density).
+"

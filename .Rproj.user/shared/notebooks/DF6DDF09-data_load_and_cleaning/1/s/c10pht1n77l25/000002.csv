@@ -1,0 +1,48 @@
+"0","nyc_census_data_comp <- get_acs(geography = ""tract"","
+"0","        state = ""New York"","
+"0","        county = c(""Bronx"","
+"0","                   ""Kings"","
+"0","                   ""New York"","
+"0","                   ""Queens"","
+"0","                   ""Richmond""),"
+"0","        year = 2020,"
+"0","        variables = c(median_income = ""B19013_001"","
+"0","                      median_age = ""B01002_001"","
+"0","                      bachelors_degree = ""B29002_007"","
+"0","                      poverty = ""B17020_002"","
+"0","                      public_transit = ""B08301_010"","
+"0","                      total_pop = ""B01001_001"","
+"0","                      white = ""B03002_003"","
+"0","                      black = ""B03002_004"","
+"0","                      asian = ""B03002_006"","
+"0","                      hispanic_latino = ""B03002_012"","
+"0","                      native = ""B03002_005"","
+"0","                      pacific_islander = ""B03002_007"","
+"0","                      other = ""B03002_008"","
+"0","                      two_more = ""B03002_009""),"
+"0","        summary_var = ""B03002_001"","
+"0","        output = ""wide"","
+"0","        key = Sys.getenv(""CENSUS_API""),"
+"0","        geometry = T,"
+"0","        cb = F) %>% # use TIGER/Line shapefiles"
+"0","  st_transform(crs = 2263) %>% # transform crs to best for NYC"
+"0","  erase_water(area_threshold = 0.75) #erase water from boundaries"
+"2","Getting data from the 2016-2020 5-year ACS
+"
+"2","Using FIPS code '36' for state 'New York'
+"
+"2","Using FIPS code '005' for 'Bronx County'
+"
+"2","Using FIPS code '047' for 'Kings County'
+"
+"2","Using FIPS code '061' for 'New York County'
+"
+"2","Using FIPS code '081' for 'Queens County'
+"
+"2","Using FIPS code '085' for 'Richmond County'
+"
+"2","Fetching area water data for your dataset's location...
+"
+"2","Erasing water area...
+If this is slow, try a larger area threshold value.
+"

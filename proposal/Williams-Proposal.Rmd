@@ -1,0 +1,353 @@
+---
+title: "DATA 606 Data Project Proposal"
+author: "Justin WIlliams"
+output: pdf_document
+always_allow_html: yes
+---
+
+```{r load-packages, message=FALSE, warning=FALSE}
+library(tidycensus)
+library(tidyverse)
+library(tigris)
+options(tigris_use_cache = TRUE)
+library(RSocrata)
+library(dotenv)
+library(sf)
+library(mapview)
+```
+
+### Data Preparation
+
+View different variables to choose from in latest available Census.
+
+```{r view-census-variables}
+# variables available from 2020 decennial
+(decennial_2020 <- load_variables(2020, "pl", cache = T))
+
+# 2020 decennial didn't have income data, will have to use acs
+(acs_5_2020 <- load_variables(2020, "acs5", cache = T))
+
+# preview and search for term
+view(acs_5_2020)
+```
+
+We will be using `B19013_001` (median income) from the ACS 5-year 2016-2020 estimate
+
+```{r setup, echo=TRUE, results='hide', warning=FALSE, message=FALSE}
+# pull in median income data from acs 2016 - 2020
+nyc_median_income <- get_acs(geography = "tract",
+        state = "New York",
+        county = c("Bronx",
+                   "Kings",
+                   "New York",
+                   "Queens",
+                   "Richmond"),
+        year = 2020,
+        variables = c(median_income = "B19013_001",
+                      bachelors_25_over = "B15003_022",
+                      poverty = "B17020_001",
+                      total_pop = "B01001_001",
+                      total_pop_theme = "B03002_001",
+                      total_not_hispanic = "B03002_002",
+                      white = "B03002_003",
+                      black = "B03002_004",
+                      native = "B03002_005",
+                      asian = "B03002_006",
+                      pacific_islander = "B03002_007",
+                      other = "B03002_008",
+                      two_more = "B03002_009",
+                      two_more_other = "B03002_010",
+                      two_more_ex_other = "B03002_011",
+                      hispanic_latino = "B03002_012"),
+        key = Sys.getenv("CENSUS_API"),
+        geometry = T,
+        cb = F) %>% # use TIGER/Line shapefiles
+  st_transform(crs = 2263) %>% # transform crs to best for NYC
+  erase_water(area_threshold = 0.75) #erase water from boundaries
+```
+
+Let's visualize Median Income across the 5 boroughs.
+
+```{r median-income}
+nyc_median_income %>% 
+  ggplot(aes(fill = estimate)) +
+    geom_sf(color = NA) +
+    scale_fill_viridis_c(option = "viridis",
+                         label = scales::dollar_format(scale = .001,
+                                                       prefix = "$",
+                                                       suffix = "k")) +
+    theme_void() +
+    labs(title = "NYC Median Income 2020",
+         caption = "Data source: ACS 5-year 2016-2020 estimate",
+         fill = "Income")
+```
+
+Pull in food scrap site data using Socrata API.
+
+```{r load-food-scrap-data}
+# load food scrap data
+food_scrap <- 
+  read.socrata(
+    "https://data.cityofnewyork.us/resource/if26-z6xq.json", 
+    app_token = Sys.getenv("SOCRATA_API"))
+
+#preview data
+view(food_scrap)
+
+# look at census tract columns
+food_scrap %>% 
+  group_by(borough, ct2010) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+
+# sum missing values
+sum(is.na(food_scrap$ct2010))
+```
+
+157 missing values in `ct2010` Census Tract, will need to get these values in order to eventually join with Median Income data. We can use the `call_geolocator_latlon()` function from the **tigris** package to get Census Codes from point locations. It's a 15 digit number where the first 2-digit code are state, second 3-digit code state, the next 6-digit code for Census Tract. Therefore we can get a sub-string that equates to census tracts and fill in this missing data.
+
+```{r get-census-code}
+# many na in census tract, get census code through geolocator
+food_scrap$census_code <- 
+  apply(food_scrap, 1, function(row) call_geolocator_latlon(
+  row['latitude'], row['longitude']
+))
+
+# get census tracts from census code
+food_scrap <- food_scrap %>% 
+  mutate(ct2010_2 = as.numeric(substr(census_code, 6, 11)))
+
+# convert to simple features object to utilize geometry features
+food_scrap_sf <- food_scrap %>% 
+  st_as_sf(coords = c("longitude", "latitude"),
+           crs = 4326
+  ) %>% 
+  st_transform(2263)
+
+#preview
+view(food_scrap_sf)
+```
+
+Save and then recall so I don't have to redo geolocator function (takes time).
+
+```{r save-census-code}
+saveRDS(food_scrap_sf, file = "./data/food_scrap_sf.rds")
+food_scrap_sf <- readRDS("./data/food_scrap_sf.rds")
+```
+
+Let's visualize food scrap sites
+
+```{r food-scrap-visualize}
+# drop point coordinates column
+drop <- c("point.coordinates")
+food_scrap_sf <- food_scrap_sf %>% 
+  select(-drop)
+
+# preview food scrap sites
+food_scrap_sf %>% 
+  mapview(
+    col.regions = "red",
+    legend = F
+  )
+
+food_scrap_sf %>% 
+  ggplot() +
+    geom_sf()
+```
+
+Let's look at this overlayed with the median income data.
+
+```{r food-scrap-median-income}
+ggplot() +
+  geom_sf(data = nyc_median_income, color = NA, aes(fill = estimate)) +
+    geom_sf(data = food_scrap_sf, 
+          color = "red",
+          alpha = 0.5) +
+  scale_fill_viridis_c(option = "viridis",
+                        label = scales::dollar_format(scale = .001,
+                                                       prefix = "$",
+                                                       suffix = "k")) +
+  theme_void() +
+  labs(title = "NYC Median Income 2020 & Food Scrap Sites",
+        caption = "Data source: ACS 5-year 2016-2020 estimate & DOS NYC Open Data",
+        fill = "Income")
+```
+
+Ok, well we know we have a bunch throughout each borough, we need to aggregate by count for census tract and then join this to the median income data through Census Tracts. We will also create a boolean `food_scrap` which denotes whether a Census Tract has a food scrap composting site or not. 
+
+```{r get-census-tract-info}
+# aggreagte by borough
+(food_scrap_borough <- food_scrap_sf %>% 
+  group_by(borough) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)))
+```
+
+There are two missing values for borough, let's use the census code column imputed earlier to get the county code. Then we can fill in those missing values for county
+
+```{r county-code}
+food_scrap_sf <- food_scrap_sf %>%
+  mutate(county_code = as.numeric(substr(census_code, start = 3, stop = 5)))
+
+food_scrap_sf %>% 
+  group_by(borough, county_code) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count))
+```
+We can see the missing county codes are 047 Kings and 061 New York. Let's fill those in.
+
+```{r impute-missing-borough}
+(food_scrap_borough <- food_scrap_sf %>% 
+  mutate(borough = ifelse(county_code == 47, "Kings",
+                          ifelse(county_code == 61, "New York", borough))
+) %>% 
+  group_by(borough) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)))
+
+food_scrap_borough %>% 
+  ggplot(aes(reorder(borough, count), count, fill = count)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(x="", y = "Count", fill = "", title = "Count of Food Scrap drop-off sites by Borough")
+```
+
+So we can see Kings County has the most sites followed by New York and Queens. 
+Let's aggregate by borough and Census Tract.
+
+```{r borough-census-tract}
+# aggreate by borough and census tract
+(food_scrap_ct <- food_scrap_sf %>% 
+  group_by(borough, ct2010_2) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)))
+```
+
+So it looks like no census tract has more then 3 food scrap drop-off sites.
+Let's join the data sets on census tract and then create a boolean column for whether the census tract has food scrap drop off site or not. 
+
+### Research question 
+
+**You should phrase your research question in a way that matches up with the scope of inference your dataset allows for.**
+
+*Does income predict food scrap composting sites in NYC's 5 boroughs?*
+
+Or perhaps a different question which could involve more data from Census API such as:
+
+*What factors contribute to whether or not a census tract in NYC has a food scrap drop off site or not?*
+
+Additional variables could include, race, percent below poverty level, percent with vehicle etc...
+  
+### Cases 
+
+**What are the cases, and how many are there?**
+
+The cases are census tracts within NYC 5 boros. 
+
+```{r ct-cases}
+cat("There are ", nrow(nyc_median_income), " cases in the dataset",sep = "")
+```
+
+### Data collection 
+
+**Describe the method of data collection.**
+
+I used the most recent American Community Survey (ACS 2016 - 2020).
+The ACS is mailed annually to ~3.5 million households per year representing about 3 percent of the total US population). The 5-year which I will be utilizing in this project, is a moving average of data over a 5-year period that covers geographies down to Census block group. ACS are different from decennial Census data in that data represent estimates rather than precise counts, and as a result, are characterized by margins of error (moe) around estimates. 
+
+The Food Scrap drop-off data was provided by the NYC Department of Sanitation (DOS). I am uncertain of their collection methods. 
+
+### Type of study 
+
+**What type of study is this (observational/experiment)?**
+
+This is observational. 
+
+### Data Source 
+
+**If you collected the data, state self-collected. If not, provide a citation/link.**
+
+Census data was downloaded via the `tidycensus` package using the Census API.
+Food scrap data was downloaded through <a href="https://data.cityofnewyork.us/Environment/Food-Scrap-Drop-Off-Locations-in-NYC/if26-z6xq">NYC Open Data</a> using `RSocrata` through the <a href="https://dev.socrata.com/foundry/data.cityofnewyork.us/if26-z6xq">Socrata API</a>. 
+
+### Response Variable
+
+**What is the response variable? Is it quantitative or qualitative?**
+
+The response variable is whether or not a Census Tract has a food scrap drop-off location and is categorical or boolean. 
+
+### Explanatory Variable
+
+**You should have two independent variables, one quantitative and one qualitative.**
+
+The explanatory variable is mean median rent of NYC Census Tracts and is numerical.
+
+### Relevant summary statistics 
+
+**Provide summary statistics for each the variables. Also include appropriate visualizations related to your research question (e.g. scatter plot, boxplots, etc). This step requires the use of R, hence a code chunk is provided below. Insert more code chunks as needed.**
+
+Let's look at descriptive statistics of median income per census tract in NYC.
+
+```{r median-income-des-stats}
+nyc_median_income %>% 
+  ggplot(aes(estimate)) + 
+    geom_boxplot(fill = "lightblue",
+                 notch = T,
+                 na.rm = T) +
+    coord_flip() +
+    scale_x_continuous(labels = 
+                         scales::dollar_format(
+                           scale = .001,
+                           prefix = "$",
+                           suffix = "k")) +
+    labs(x = "Income ($USD)", title = "NYC Census Tract Median Income (ACS 2016-2020)")
+```
+
+There were `r sum(is.na(nyc_median_income$estimate))` rows with `NA`, so those were removed. Otherwise we can see median income per NYC Census Tract is ~$70k and the Interquartile Range is between spans ~50k - ~90k. Max outliers are upwards of ~250k and Min is very low.
+
+Let's take a look at distributions of food scrap drop off sites.
+
+```{r food-scrap-drop-map}
+# create ct column for joining
+nyc_median_income <- nyc_median_income %>% 
+  mutate(ct2010 = str_sub(string = GEOID,
+                          start = 6))
+# join ct and food scrap data.
+merged_df <- nyc_median_income %>% 
+  st_join(food_scrap_ct)
+
+# create bool column for food scrap
+merged_df <- merged_df %>% 
+  mutate(food_scrap = ifelse(count != 0, 1, 0))
+
+# visualize food scrap drop off
+merged_df %>% 
+  ggplot(aes(fill = count)) + 
+  geom_sf(color = NA) + 
+  scale_fill_viridis_c(option = "viridis") +
+  labs(title = "Food Scrap drop off by Census Tract Nov 2021",
+       caption = "Data source: NYC Department of Sanitation",
+       fill = "Drop off count") +
+  theme_void()
+```
+
+We can see that most Census Tract's DO NOT have food scrap drop offs. Additionally, only a few have multiple food scrap drop offs. 
+
+Total census tracts with food drop off sites versus those that do not.
+```{r total-yes-no}
+merged_df %>% 
+  group_by(food_scrap = as.factor(food_scrap)) %>% 
+  summarise(count = n()) %>% 
+  ggplot(aes(food_scrap, count, fill = food_scrap)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(x="", y="Count", title = "Count of NYC Census Tracts with and without Food Scrap drop-off sites") +
+    scale_x_discrete(labels=c("Yes", "No")) +
+    geom_text(aes(label = count, hjust=1.2)) +
+    theme(legend.position = "none")
+```
+
+Imbalanced data set with 196 yes and 2129 no.
+
+Next step would be to look at what percentage of census tracts within each borough have food scrap drop-off sites or not. 
+
